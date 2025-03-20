@@ -1,274 +1,160 @@
-# COCO-EdgeVision: HOG-Based Image Classification & Edge Deployment
+# AutoSeatAdjust-EmbeddedAI
 
-A practical pipeline demonstrating:
-- **COCO dataset** usage for classification
-- **HOG feature extraction** (using `scikit-image`)
-- **Multiple ML models** (e.g Decision Tree, etc.)
-- **GPU acceleration** (XGBoost with CUDA)  
-- **Edge device inference** on resource-constrained hardware (e.g., Kria KV260, Nvidia Jetson Orin NX)
+**An AI-based driver seat positioning system that uses camera-based eye detection and XGBoost regression to automatically adjust seat distance and height on embedded devices.**
 
 ## Table of Contents
 1. [Overview](#overview)  
-2. [Features](#features)  
-3. [Project Structure](#project-structure)  
-4. [Installation](#installation)  
-5. [Downloading the COCO Dataset](#downloading-the-coco-dataset)  
-6. [Usage](#usage)  
-   1. [Data Preparation](#data-preparation)  
-   2. [Model Training](#model-training)  
-   3. [Evaluation](#evaluation)  
-   4. [Inference on Edge Devices](#inference-on-edge-devices)  
-7. [Results](#results)  
-8. [Troubleshooting](#troubleshooting)  
-9. [Contributing](#contributing)  
-10. [License](#license)  
-11. [References](#references)  
+2. [Project Structure](#project-structure)  
+3. [Dataset](#dataset)  
+4. [Installation & Requirements](#installation--requirements)  
+5. [Training](#training)  
+6. [Inference](#inference)  
+7. [Eye Detection (Optional)](#eye-detection-optional)  
+8. [Future Improvements](#future-improvements)  
+9. [License](#license)
 
 ---
 
 ## Overview
+Many vehicles today allow manual seat adjustments for comfort and safety. This repository demonstrates an **embedded AI approach** that automatically positions the driver’s seat (distance and height) based on the driver’s **eye coordinates** in a real-time camera feed.  
 
-This repository contains code to **classify food-related images** by leveraging the **COCO 2017 dataset** and extracting **HOG (Histogram of Oriented Gradients) features**. The classification models (such as a **Decision Tree** or **XGBoost**) can then be **deployed on edge devices** for real-time inference, even on low-power hardware.
-
-Key highlights:
-
-- Demonstrates how to **download and parse the COCO dataset** for a custom classification task.  
-- Walks through **HOG feature extraction** on each image.  
-- Uses **XGBoost with GPU support** (optional) for faster training, or a simpler **Decision Tree** classifier if GPU is unavailable.  
-- Explains **exporting the trained model** and **loading** it on devices like the Kria KV260 and Nvidia Jetson Orin NX.  
-
----
-
-## Features
-
-- **COCO-based classification**: Select categories (like _pizza_, _hot dog_, _donut_, _cake_) for single-label classification.  
-- **HOG feature extraction**: CPU-based approach using `scikit-image`.  
-- **Multiple ML options**: XGBoost (GPU-accelerated) or other tree-based models (e.g., Decision Tree).  
-- **Edge inference**: Minimal script to run **live camera classification** on devices with limited resources.  
-- **Easy extension**: Adapt the pipeline to different categories, additional classes, or more advanced feature extraction methods.  
+### Key Features
+- **Eye coordinate input** from live camera or a stored dataset.  
+- **XGBoost Regression** models that learn to map `(eye_x, eye_y)` → `(seat_x, seat_y)`.  
+- **Modular design** for training, inference, and (optional) eye-detection integration.  
+- **Embeddable** in systems such as Raspberry Pi, NVIDIA Jetson, or similar edge devices.
 
 ---
 
 ## Project Structure
 
-A typical directory layout might look like this:
-
 ```
-.
-├── coco2017/
-│   ├── train2017/
-│   ├── val2017/
-│   └── annotations/
-│       ├── instances_train2017.json
-│       └── instances_val2017.json
+AutoSeatAdjust-EmbeddedAI/
+├── data/
+│   └── seat_adjustment_data.csv    # CSV dataset of eye coords and seat coords
+├── models/
+│   ├── seat_adjustment_xgboost_x.json  # Trained model for seat_x
+│   └── seat_adjustment_xgboost_y.json  # Trained model for seat_y
 ├── src/
-│   ├── train_xgboost.py       # Main training script for XGBoost
-│   ├── train_decision_tree.py # Example script for Decision Tree
-│   ├── inference_edge.py      # Script to run inference (live camera or images)
-│   └── utils/
-│       ├── hog_extraction.py  # HOG feature extraction functions
-│       └── coco_helpers.py    # COCO annotation parsing helpers
-├── README.md
-└── requirements.txt
+│   ├── train_seat_adjuster.py      # Script to train XGBoost regressors
+│   ├── infer_seat_adjuster.py      # Inference script for seat adjustment
+│   └── eye_detection.py            # (Optional) Eye detection using OpenCV
+├── README.md                       # This README
+└── requirements.txt                # Python dependencies
 ```
 
-Feel free to reorganize to match your preferences.
+- **data/**: Contains your dataset (CSV file, images, or other data).  
+- **models/**: Stores trained models for seat adjustment.  
+- **src/**: Core scripts for training, inference, and optional eye detection.  
 
 ---
 
-## Installation
+## Dataset
+You need a CSV file that maps **eye coordinates** to **seat coordinates**, for example:
 
-### 1. Clone the Repository
+| eye_x | eye_y | seat_x | seat_y |
+|-------|-------|--------|--------|
+| 150.2 | 75.0  | 30.0   | 15.2   |
+| 140.0 | 70.4  | 28.0   | 17.0   |
+| ...   | ...   | ...    | ...    |
 
-```bash
-git clone https://github.com/MultiModel-Edge-AI/EdgeAI-COCO-pipeline.git
-cd EdgeAI-COCO-pipeline
-```
+- **eye_x, eye_y**: 2D coordinates of the driver’s eye position in the camera frame.  
+- **seat_x, seat_y**: Desired seat adjustment values (distance & height).
 
-### 2. Install Dependencies
-
-- Using `dependencies.txt`:
-```bash
-pip install -r dependencies.txt
-```
+Store the CSV in `data/seat_adjustment_data.csv` (or update paths accordingly).
 
 ---
 
-## Downloading the COCO Dataset
+## Installation & Requirements
 
-1. **Create a directory** for COCO (e.g., `coco2017`) if you haven’t already.
-
-2. **Download** train/val images and annotations from <https://cocodataset.org/#download>:
-
+1. **Clone the repository**:
    ```bash
-   mkdir coco2017
-   cd coco2017
-   wget http://images.cocodataset.org/zips/train2017.zip
-   wget http://images.cocodataset.org/zips/val2017.zip
-   wget http://images.cocodataset.org/zips/test2017.zip
-   wget http://images.cocodataset.org/annotations/annotations_trainval2017.zip
+   git clone https://github.com/Embedded-Vision-AI/AutoSeatAdjust-EmbeddedAI.git
+   cd AutoSeatAdjust-EmbeddedAI
    ```
 
-3. **Unzip** the files:
-
+2. **Install required Python packages**:
    ```bash
-   unzip train2017.zip
-   unzip val2017.zip
-   unzip test2017.zip
-   unzip annotations_trainval2017.zip
+   pip install -r requirements.txt
    ```
 
-   Your folder should contain `train2017/`, `val2017/`, `test2017/`, and `annotations/`.
-
-4. **Check** that you have:
-   ```
-   coco2017/
-   ├── train2017/
-   ├── val2017/
-   ├── test2017/
-   └── annotations/
-       ├── instances_train2017.json
-       ├── instances_val2017.json
-       ...
-   ```
+3. **GPU Support (Optional)**:  
+   - If you want to train on a GPU, ensure you have the required [CUDA](https://developer.nvidia.com/cuda-zone) drivers and libraries installed.  
+   - You might need to install `xgboost` with GPU support specifically.
 
 ---
 
-## Usage
+## Training
 
-### Data Preparation
+**Script**: `src/train_seat_adjuster.py`
 
-This project **filters** COCO images containing specific food classes (e.g., pizza, hot dog, donut, cake) and discards images with multiple categories. You can modify the code to handle multi-label or additional classes.
-
-1. **Edit the list of target classes** in your training script (e.g., `TARGET_CLASSES = ['pizza','hot dog','donut','cake']`).
-2. **Set** any optional parameters (like `MAX_IMAGES_PER_CLASS`) if you want to limit dataset size for a quick test.
-
-### Model Training
-
-In `src/train_xgboost.py` (for example):
-
-```bash
-python src/train_xgboost.py
-```
-
-What it does:
-- Reads the COCO annotations (`instances_train2017.json`, `instances_val2017.json`) via `pycocotools`.
-- Filters out images that don’t match your target classes or that contain multiple classes.
-- Extracts **HOG features** for each selected image.
-- Trains an **XGBoost** classifier (optionally on GPU if available).
-- Outputs performance metrics (confusion matrix, accuracy).
-- Saves the trained model as `my_xgb_model.json`.
-
-*(For a **Decision Tree** or other algorithms, see `src/train_decision_tree.py` or a similar script.)*
-
-### Evaluation
-
-The script typically:
-- Uses **COCO’s `val2017`** subset to evaluate.  
-- Prints a **confusion matrix** and class-specific error rates.  
-- Reports the **overall accuracy**.
-
-Example output snippet:
-```
-Confusion Matrix (Validation Set):
-[[123   1   0   2]
- [  3 134   5   0]
- [  0   2 145   1]
- [  4   0   3 118]]
-
-Error Rates by Class:
- pizza: 0.024
- hot dog: 0.056
- donut: 0.020
- cake: 0.055
-
-Overall Val Accuracy: 0.922
-```
-
-*(The actual numbers depend on your dataset filters and hyperparameters.)*
-
-### Inference on Edge Devices
-
-After training, we have a **serialized model** (e.g., `my_xgb_model.json`). Copy it to your edge device, then run an **inference script**. For example, `inference_edge.py`:
-
-```bash
-python src/inference_edge.py my_xgb_model.json
-```
-
-- Captures frames from a camera (using OpenCV).
-- Extracts HOG features on each frame.
-- Runs `model.predict()` to classify the image (pizza, hot dog, donut, or cake).
-- Prints or overlays the label on the video feed.
-
-On a **Kria KV260** or **Nvidia Jetson Orin NX**, you’d need:
-
-```bash
-pip install xgboost scikit-image opencv-python
-```
-
-> **Note**: If your edge device has limited CPU/GPU resources, consider smaller models, fewer classes, or **faster** feature extraction approaches.
-
----
-
-## Results
-
-**Potential results** from a typical run might be:
-
-- **Accuracy** on COCO val set: ~85–95% (depending on classes, sample size, HOG parameters, and your model’s hyperparameters).
-- **Inference speed**:  
-  - On a **Desktop GPU**, tens of frames per second.  
-  - On a **Nvidia Jetson Orin NX**, 1–2 FPS might be more realistic if using HOG + XGBoost on CPU.
-  - On a **Kria KV260**, 1–2 FPS might be more realistic if using HOG + XGBoost on CPU.  
-
-- **100% accuracy** might indicate data leakage (e.g., very small test set or mis-labeled data). Always verify your approach is correct.
-
----
-
-## Troubleshooting
-
-1. **Skipping Images**:  
-   - If you see “Could not find class for image …” or skipping many images, ensure your script is filtering classes properly.  
-2. **XGBoost Device Mismatch**:  
-   - If you see warnings about “mismatched devices,” your data might be on CPU while the model is on GPU. Usually harmless but can slow inference.  
-3. **No GPU**:  
-   - If your edge device doesn’t support CUDA, remove `device='cuda'` from the XGBoost parameters (or use a CPU-based classifier).  
-4. **Performance**:  
-   - Large-scale HOG extraction can be slow. Consider limiting data or optimizing with GPU-based libraries (like CuPy) for preprocessing.
-
----
-
-## Contributing
-
-1. **Fork** this repository.  
-2. **Create** a new branch for your feature/fix:
+1. **Prepare your CSV** with columns: `eye_x`, `eye_y`, `seat_x`, `seat_y`.  
+2. **Update `csv_path`** in the script if necessary (defaults to `data/seat_adjustment_data.csv`).  
+3. **Run the training script**:
    ```bash
-   git checkout -b feature-my-improvement
+   cd src
+   python train_seat_adjuster.py
    ```
-3. **Commit** your changes and push to your fork:
-   ```bash
-   git commit -m "Add my new feature"
-   git push origin feature-my-improvement
-   ```
-4. **Open a Pull Request** to merge into the main branch.
+4. **Outputs**:
+   - Two model files (by default):  
+     - `models/seat_adjustment_xgboost_x.json`  
+     - `models/seat_adjustment_xgboost_y.json`
 
-We welcome suggestions, bug reports, and community contributions!
+The script trains two separate XGBoost regressors to predict `seat_x` and `seat_y` from `(eye_x, eye_y)`.
+
+---
+
+## Inference
+
+**Script**: `src/infer_seat_adjuster.py`
+
+1. **Verify model paths** in the script:
+   ```python
+   model_x_path = "models/seat_adjustment_xgboost_x.json"
+   model_y_path = "models/seat_adjustment_xgboost_y.json"
+   ```
+2. **(Optional) Provide real eye coordinates**.  
+   - In the example, `get_current_eye_coordinates()` returns dummy `(eye_x, eye_y)` values.  
+   - Integrate with an actual eye detection function or any other method to get real-time driver eye position.
+
+3. **Run the inference script**:
+   ```bash
+   python infer_seat_adjuster.py
+   ```
+4. **Predicted seat coordinates** are printed to console. In a real scenario, these would be sent to your seat control module.
+
+---
+
+## Eye Detection (Optional)
+
+If you need to **detect eyes** in real time:
+
+1. **Install OpenCV** (already in `requirements.txt` if you are using it).
+2. **Download Haar Cascade for Eyes** (for instance, `haarcascade_eye.xml` from OpenCV’s GitHub).
+3. **Use the `eye_detection.py` script**:
+   ```bash
+   python eye_detection.py
+   ```
+   This script will open your webcam, detect eyes, and display bounding boxes. You can adjust the code to compute the eye center `(eye_x, eye_y)` and feed it to the inference script.
+
+---
+
+## Future Improvements
+
+- **Multi-output XGBoost**: Currently, we train two separate regressors. Explore multi-output methods or other frameworks supporting direct 2D regression.  
+- **Improved Eye Tracking**: Instead of Haar cascades, use a more robust model (Dlib, Mediapipe, or a custom CNN).  
+- **Calibration**: Provide user calibration options for each driver’s preference.  
+- **Edge Deployment**: Optimize model size and performance using quantization or pruning for real-time embedded inference.
 
 ---
 
 ## License
-
-This project is licensed under the [MIT License](LICENSE). You’re free to use, modify, and distribute the code as allowed by that license.
+This project is offered under the [MIT License](https://opensource.org/licenses/MIT). Feel free to modify and adapt for your use case.  
 
 ---
 
 ## References
 
-1. **COCO Dataset** – [Official Website](https://cocodataset.org/)  
-2. **XGBoost** – [Official GitHub](https://github.com/dmlc/xgboost), [Documentation](https://xgboost.readthedocs.io/)  
-3. **scikit-image** – [Docs](https://scikit-image.org/docs/stable/)  
-4. **pycocotools** – [GitHub](https://github.com/cocodataset/cocoapi)  
-6. **NVIDIA Jetson** – [Developer Site](https://developer.nvidia.com/embedded-computing)
-
----
-
-_Thank you for checking out **COCO-EdgeVision**! If you have any questions, suggestions, or issues, feel free to [open an issue](../../issues) or reach out._
+1. **XGBoost** – [Official GitHub](https://github.com/dmlc/xgboost), [Documentation](https://xgboost.readthedocs.io/)  
+2. **scikit-image** – [Docs](https://scikit-image.org/docs/stable/)  
+3. **NVIDIA Jetson** – [Developer Site](https://developer.nvidia.com/embedded-computing)
