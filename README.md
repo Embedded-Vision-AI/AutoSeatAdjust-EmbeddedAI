@@ -148,6 +148,22 @@ If you need to **detect eyes** in real time:
 
 ---
 
+## Contributing
+
+1. **Fork** this repository.  
+2. **Create** a new branch for your feature/fix:
+   ```bash
+   git checkout -b feature-my-improvement
+   ```
+3. **Commit** your changes and push to your fork:
+   ```bash
+   git commit -m "Add my new feature"
+   git push origin feature-my-improvement
+   ```
+4. **Open a Pull Request** to merge into the main branch.
+
+We welcome suggestions, bug reports, and community contributions!
+
 ## License
 This project is offered under the [MIT License](https://opensource.org/licenses/MIT). Feel free to modify and adapt for your use case.  
 
@@ -158,3 +174,8 @@ This project is offered under the [MIT License](https://opensource.org/licenses/
 1. **XGBoost** – [Official GitHub](https://github.com/dmlc/xgboost), [Documentation](https://xgboost.readthedocs.io/)  
 2. **scikit-image** – [Docs](https://scikit-image.org/docs/stable/)  
 3. **NVIDIA Jetson** – [Developer Site](https://developer.nvidia.com/embedded-computing)
+
+---
+
+_Thank you for checking out **AutoSeatAdjust-EmbeddedAI**! If you have any questions, suggestions, or issues, feel free to [open an issue](../../issues) or reach out._
+
