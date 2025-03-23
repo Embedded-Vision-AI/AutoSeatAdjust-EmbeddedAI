@@ -75,7 +75,7 @@ Store the CSV in `data/seat_adjustment_data.csv` (or update paths accordingly).
 
 2. **Install required Python packages**:
    ```bash
-   pip install -r requirements.txt
+   pip install -r dependencies.txt
    ```
 
 3. **GPU Support (Optional)**:  
