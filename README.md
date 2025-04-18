@@ -67,7 +67,7 @@ python DTreeClassifier.py
 
 - Loads the Excel dataset
 - Trains two regressors
-- Saves them to `models/height_based_models.pth`
+- Saves them to `models/pred_model.pth`
 
 ---
 
