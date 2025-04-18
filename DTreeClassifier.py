@@ -1,154 +1,66 @@
-import os
-import numpy as np
-from skimage import io, color, transform
-from skimage.feature import hog
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import confusion_matrix
+import os, joblib
+import pandas as pd
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 
-food_images = 'Food_Images'
-test_images = 'Test'
-classes = ['hot_dog','french_fries','hamburger','pizza']  
+#configuration
+DATA_XLSX_PATH  = "data/data.xlsx"
+MODEL_PATH = "models/pred_model.pth"
+HEADER_ROW      = 0
 
-#training data
-train_files  = []
-train_labels = []
+FEATURE_COL   = "Height (cm)"
+TARGET_COLS   = [
+    "True Long. Distance (cm)",
+    "True Seat Angle (from vertical)"
+]
 
-for class_name in classes:
-    class_dir = os.path.join(food_images, class_name)
-    if not os.path.isdir(class_dir):
-        raise ValueError(f"Training folder not found: {class_dir}")
+#load and prepare data
+def load_data(path: str):
+    df = pd.read_excel(path, engine="openpyxl", header=HEADER_ROW)
+    # clean whitespace around column names
+    df.columns = [str(c).strip() for c in df.columns]
+    required = [FEATURE_COL] + TARGET_COLS
+    missing  = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns in Excel: {missing}\nFound: {df.columns.tolist()}")
+    df = df.dropna(subset=required)
 
-    for fname in os.listdir(class_dir):
-        lower_name = fname.lower()
-        if lower_name.endswith('.jpg') or lower_name.endswith('.png'):
-            full_path = os.path.join(class_dir, fname)
-            train_files.append(full_path)
-            train_labels.append(class_name)
+    X = df[[FEATURE_COL]].values
+    y = df[TARGET_COLS].copy()
+    return X, y
 
-#test Data
-test_files   = []
-test_labels  = []
+#train 1 XGBRegressor per target
+def train_models(X, y):
+    X_tr, X_val, y_tr, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    models = {}
+    for col in TARGET_COLS:
+        print(f"[TRAIN] {col}")
+        reg = xgb.XGBRegressor(
+            tree_method="hist", #use gpu_hist to use GPU
+            n_estimators=200,
+            max_depth=6,
+            random_state=42,
+        )
+        reg.fit(X_tr, y_tr[col])
+        mse = mean_squared_error(y_val[col], reg.predict(X_val))
+        print(f"    MSE = {mse:.4f}")
+        models[col] = reg
+    return models
 
-if not os.path.isdir(test_images):
-    raise ValueError(f"Test folder not found: {test_images}")
+#pickling models into one
+def save_models(models: dict, model_path: str):
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    joblib.dump(models, model_path)
+    print(f"[INFO] Models pickled → {model_path}")
 
-all_test_fnames = os.listdir(test_images)
-for fname in all_test_fnames:
-    lower_name = fname.lower()
+if __name__ == "__main__":
+    print("[INFO] Loading data…")
+    X, y = load_data(DATA_XLSX_PATH)
+    print(f"  Samples: {len(X)}   Feature: {FEATURE_COL}")
 
-    matched_class = None
-    for class_name in classes:
-        if class_name in lower_name:
-            matched_class = class_name
-            break
+    print("[INFO] Training regressors…")
+    trained = train_models(X, y)
 
-    if matched_class is None:
-        print(f"Warning: Could not find class for test image: {fname}")
-        continue
-
-    test_files.append(os.path.join(test_images, fname))
-    test_labels.append(matched_class)
-
-#HOG
-def extract_features(image_path):
-    img = io.imread(image_path)
-    if img.ndim == 3:
-        img = color.rgb2gray(img)
-    img = transform.resize(img, (128,128))
-
-    hog_vec = hog(img,
-                  orientations=9,
-                  pixels_per_cell=(8,8),
-                  cells_per_block=(2,2),
-                  block_norm='L2-Hys',
-                  transform_sqrt=True)
-    return hog_vec
-
-#feature extraction for training
-X_train = []
-for fpath in train_files:
-    feats = extract_features(fpath)
-    X_train.append(feats)
-
-X_train = np.array(X_train, dtype=np.float32)
-
-le = LabelEncoder()
-y_train = le.fit_transform(train_labels)
-
-#training decision tree
-clf = DecisionTreeClassifier(min_samples_leaf=15)
-clf.fit(X_train, y_train)
-
-#test set evaluation
-X_test = []
-for fpath in test_files:
-    feats = extract_features(fpath)
-    X_test.append(feats)
-
-X_test = np.array(X_test, dtype=np.float32)
-y_test = le.transform(test_labels)
-
-y_pred = clf.predict(X_test)
-
-#confusion matrix for test set
-cm_test = confusion_matrix(y_test, y_pred, labels=np.arange(len(le.classes_)))
-print("Confusion Matrix (Test Set):\n", cm_test)
-
-#error rates for test set
-print("\nError Rates by Class (Test Set):")
-num_classes = len(le.classes_)
-row_sums = cm_test.sum(axis=1)
-
-for i in range(num_classes):
-    class_name = le.classes_[i]
-    correct = cm_test[i, i]
-    total   = row_sums[i]
-    if total == 0:
-        err_rate = 0.0
-    else:
-        err_rate = 1.0 - (correct / total)
-    print(f"  {class_name}: {err_rate:.3f}")
-
-#overall test error
-total_correct = np.trace(cm_test)
-total_images  = cm_test.sum()
-test_error = 1.0 - (total_correct / total_images)
-print(f"\nOverall Test Error: {test_error:.3f}")
-print(f"Overall Test Accuracy: {1 - test_error:.3f}")
-
-#evaluation on whole data set
-all_files  = train_files + test_files
-all_labels = train_labels + test_labels
-
-X_all = []
-for fpath in all_files:
-    feats = extract_features(fpath)
-    X_all.append(feats)
-
-X_all = np.array(X_all, dtype=np.float32)
-y_all = le.fit_transform(all_labels)
-
-y_pred_all = clf.predict(X_all)
-
-cm_all = confusion_matrix(y_all, y_pred_all, labels=np.arange(len(le.classes_)))
-print("\nConfusion Matrix (All Data):\n", cm_all)
-
-print("\nError Rates by Class (All Data):")
-row_sums_all = cm_all.sum(axis=1)
-for i in range(num_classes):
-    class_name = le.classes_[i]
-    correct = cm_all[i, i]
-    total   = row_sums_all[i]
-    if total == 0:
-        err_rate = 0.0
-    else:
-        err_rate = 1.0 - (correct / total)
-    print(f"  {class_name}: {err_rate:.3f}")
-
-#overall error for whole dataset
-total_correct_all = np.trace(cm_all)
-total_images_all  = cm_all.sum()
-all_error = 1.0 - (total_correct_all / total_images_all)
-print(f"\nOverall Error (Train+Test): {all_error:.3f}")
-print(f"Overall Accuracy (Train+Test): {1 - all_error:.3f}")
+    save_models(trained, MODEL_PATH)
+    print("[DONE]")
