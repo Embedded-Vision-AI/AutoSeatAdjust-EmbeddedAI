@@ -62,7 +62,7 @@ pip install -r dependencies.txt
 ## 🧪 Training the Model
 
 ```bash
-python DTreeClassifier.py
+python src/DTreeClassifier.py
 ```
 
 - Loads the Excel dataset
@@ -74,7 +74,7 @@ python DTreeClassifier.py
 ## 🤖 Running Inference with Feedback
 
 ```bash
-python infer_height.py
+python src/infer_height.py
 ```
 
 - Input: Driver height
